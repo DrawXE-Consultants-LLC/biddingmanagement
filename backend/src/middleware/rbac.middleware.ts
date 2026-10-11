@@ -1,100 +1,118 @@
-// import { Response, NextFunction } from "express";
-// import { AuthRequest } from "./auth.middleware";
-// import { UserRole } from "../types/auth.types";
-
-// export const authorize = (
-//   ...allowedRoles: UserRole[]
-// ) => {
-
-//   return (
-//     req: AuthRequest,
-//     res: Response,
-//     next: NextFunction
-//   ) => {
-
-//     const role = req.userRole as UserRole | undefined;
-
-//     if (!role) {
-//       return res.status(403).json({
-//         success: false,
-//         message: "Role not found"
-//       });
-//     }
-
-//     if (!allowedRoles.includes(role)) {
-//       return res.status(403).json({
-//         success: false,
-//         message: "You do not have permission"
-//       });
-//     }
-
-//     next();
-//   };
-// };
-
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "./auth.middleware";
 import { prisma } from "../config/database";
 import { UserRole } from "../types/auth.types";
+
+// ==========================================
+// ORGANIZATION-AWARE ROLE AUTHORIZATION
+// ==========================================
 
 export const authorize = (...allowedRoles: UserRole[]) => {
   return async (
     req: AuthRequest,
     res: Response,
     next: NextFunction
-  ) => {
+  ): Promise<void> => {
     try {
-      if (!req.user) {
-        return res.status(401).json({
+      // 1. Authentication check
+      const userId = req.user?.id;
+
+      if (!userId) {
+        res.status(401).json({
           success: false,
-          message: "Authentication required"
+          message: "Authentication required",
         });
+        return;
       }
+
+      // 2. Resolve organization ID
+      const rawOrganizationId: unknown =
+        req.params.organizationId ??
+        req.body?.organizationId ??
+        req.query.organizationId;
 
       const organizationId =
-        req.params.organizationId ||
-        req.body.organizationId;
+        typeof rawOrganizationId === "string"
+          ? rawOrganizationId.trim()
+          : Array.isArray(rawOrganizationId) &&
+              typeof rawOrganizationId[0] === "string"
+            ? rawOrganizationId[0].trim()
+            : "";
 
       if (!organizationId) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
-          message: "Organization ID is required"
+          message: "Valid organization ID is required",
         });
+        return;
       }
 
+      // 3. Verify membership and current account status
       const membership = await prisma.membership.findUnique({
         where: {
           userId_organizationId: {
-            userId: req.user.id,
-            organizationId: organizationId as string
-          }
-        }
+            userId,
+            organizationId,
+          },
+        },
+        select: {
+          role: true,
+          user: {
+            select: {
+              isActive: true,
+            },
+          },
+          organization: {
+            select: {
+              status: true,
+            },
+          },
+        },
       });
 
       if (!membership) {
-        return res.status(403).json({
+        res.status(403).json({
           success: false,
-          message: "User is not a member of this organization"
+          message: "User is not a member of this organization",
         });
+        return;
       }
 
+      if (!membership.user.isActive) {
+        res.status(401).json({
+          success: false,
+          message: "User account is inactive",
+        });
+        return;
+      }
+
+      if (membership.organization.status !== "ACTIVE") {
+        res.status(403).json({
+          success: false,
+          message: "Organization is not active",
+        });
+        return;
+      }
+
+      // 4. Verify organization-specific role
       const role = membership.role as UserRole;
 
       if (!allowedRoles.includes(role)) {
-        return res.status(403).json({
+        res.status(403).json({
           success: false,
-          message: "Insufficient permissions"
+          message: "Insufficient permissions for this organization",
         });
+        return;
       }
 
+      // 5. All checks passed
       next();
-
     } catch (error) {
-      console.error(error);
+      console.error("Organization RBAC Error:", error);
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
-        message: "RBAC check failed"
+        message: "Failed to verify organization permissions",
       });
     }
   };

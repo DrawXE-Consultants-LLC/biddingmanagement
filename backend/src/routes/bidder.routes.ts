@@ -5,22 +5,33 @@ import {
   getBidderList,
   getBidder,
   updateBidderController,
-  deleteBidderController
+  deleteBidderController,
 } from "../controllers/bidder.controller";
 
-import { authenticate }
-  from "../middleware/auth.middleware";
-
-import { authorize }
-  from "../middleware/rbac.middleware";
-
-import { UserRole }
-  from "../types/auth.types";
+import { authenticate } from "../middleware/auth.middleware";
+import { authorize } from "../middleware/rbac.middleware";
+import { resolveBidderOrganization } from "../middleware/bidderOrganization.middleware";
+import { UserRole } from "../types/auth.types";
 
 const router = Router();
 
+// ==========================================
+// ROLES ALLOWED TO READ BIDDER DIRECTORY
+// ==========================================
 
-// Create bidder
+const bidderReadRoles = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.ESTIMATOR,
+  UserRole.PROJECT_MANAGER,
+  UserRole.VIEWER,
+];
+
+// ==========================================
+// CREATE BIDDER
+// OWNER / ADMIN / ESTIMATOR / PROJECT MANAGER
+// ==========================================
+
 router.post(
   "/organizations/:organizationId/bidders",
   authenticate,
@@ -33,27 +44,40 @@ router.post(
   createBidderController
 );
 
+// ==========================================
+// GET BIDDER DIRECTORY
+// AUTHORIZED ORGANIZATION MEMBERS ONLY
+// ==========================================
 
-// Get bidder directory
 router.get(
   "/organizations/:organizationId/bidders",
   authenticate,
+  authorize(...bidderReadRoles),
   getBidderList
 );
 
+// ==========================================
+// GET SINGLE BIDDER
+// RESOLVE ORGANIZATION BEFORE AUTHORIZATION
+// ==========================================
 
-// Get single bidder
 router.get(
   "/bidders/:bidderId",
   authenticate,
+  resolveBidderOrganization,
+  authorize(...bidderReadRoles),
   getBidder
 );
 
+// ==========================================
+// UPDATE BIDDER
+// OWNER / ADMIN / ESTIMATOR / PROJECT MANAGER
+// ==========================================
 
-// Update bidder
 router.patch(
   "/bidders/:bidderId",
   authenticate,
+  resolveBidderOrganization,
   authorize(
     UserRole.OWNER,
     UserRole.ADMIN,
@@ -63,17 +87,20 @@ router.patch(
   updateBidderController
 );
 
+// ==========================================
+// DELETE BIDDER
+// OWNER / ADMIN ONLY
+// ==========================================
 
-// Delete bidder
 router.delete(
   "/bidders/:bidderId",
   authenticate,
+  resolveBidderOrganization,
   authorize(
     UserRole.OWNER,
     UserRole.ADMIN
   ),
   deleteBidderController
 );
-
 
 export default router;

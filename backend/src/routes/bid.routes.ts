@@ -17,6 +17,16 @@ import { UserRole } from "../types/auth.types";
 
 const router = Router();
 
+// Roles allowed to access internal bid information.
+// Every request must also pass organization membership checks.
+const bidReadRoles = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.ESTIMATOR,
+  UserRole.PROJECT_MANAGER,
+  UserRole.VIEWER,
+];
+
 // ==========================================
 // CREATE BID
 // Owner / Admin / Estimator / Project Manager
@@ -41,6 +51,7 @@ router.post(
 router.get(
   "/organizations/:organizationId/bid-packages/:bidPackageId/bids",
   authenticate,
+  authorize(...bidReadRoles),
   getBidPackageBidsController
 );
 
@@ -51,6 +62,7 @@ router.get(
 router.get(
   "/organizations/:organizationId/bid-packages/:bidPackageId/bids/comparison",
   authenticate,
+  authorize(...bidReadRoles),
   getBidComparisonController
 );
 
@@ -61,6 +73,7 @@ router.get(
 router.get(
   "/organizations/:organizationId/bids/:bidId",
   authenticate,
+  authorize(...bidReadRoles),
   getBidController
 );
 
@@ -98,6 +111,7 @@ router.patch(
 
 // ==========================================
 // DELETE BID
+// Owner / Admin only
 // ==========================================
 
 router.delete(
