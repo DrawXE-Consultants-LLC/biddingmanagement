@@ -6,18 +6,32 @@ import {
   getDocumentController,
   updateDocumentController,
   deleteDocumentController,
+  uploadProjectDocumentController,
 } from "../controllers/document.controller";
 
 import { authenticate } from "../middleware/auth.middleware";
-
 import { authorize } from "../middleware/rbac.middleware";
-
 import { UserRole } from "../types/auth.types";
+import { uploadDocument } from "../middleware/upload.middleware";
 
 const router = Router();
 
 // ==========================================
-// CREATE DOCUMENT
+// ROLES ALLOWED TO READ DOCUMENTS
+// Membership in the requested organization
+// is also checked by authorize().
+// ==========================================
+
+const documentReadRoles = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.ESTIMATOR,
+  UserRole.PROJECT_MANAGER,
+  UserRole.VIEWER,
+];
+
+// ==========================================
+// CREATE DOCUMENT METADATA
 // ==========================================
 
 router.post(
@@ -33,12 +47,30 @@ router.post(
 );
 
 // ==========================================
+// UPLOAD ACTUAL PROJECT DOCUMENT
+// ==========================================
+
+router.post(
+  "/organizations/:organizationId/projects/:projectId/documents/upload",
+  authenticate,
+  authorize(
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.ESTIMATOR,
+    UserRole.PROJECT_MANAGER
+  ),
+  uploadDocument,
+  uploadProjectDocumentController
+);
+
+// ==========================================
 // GET PROJECT DOCUMENTS
 // ==========================================
 
 router.get(
   "/organizations/:organizationId/projects/:projectId/documents",
   authenticate,
+  authorize(...documentReadRoles),
   getProjectDocumentsController
 );
 
@@ -49,6 +81,7 @@ router.get(
 router.get(
   "/organizations/:organizationId/documents/:documentId",
   authenticate,
+  authorize(...documentReadRoles),
   getDocumentController
 );
 

@@ -6,9 +6,12 @@ import {
   getBidders,
   getBidderById,
   updateBidder,
-  deleteBidder
+  deleteBidder,
 } from "../services/bidder.service";
 
+// ==========================================
+// CREATE BIDDER
+// ==========================================
 
 export const createBidderController = async (
   req: AuthRequest,
@@ -25,13 +28,18 @@ export const createBidderController = async (
       phone,
       address,
       website,
-      notes
+      notes,
     } = req.body;
 
-    if (!companyName || !email) {
+    if (
+      typeof companyName !== "string" ||
+      !companyName.trim() ||
+      typeof email !== "string" ||
+      !email.trim()
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Company name and email are required"
+        message: "Company name and email are required",
       });
     }
 
@@ -44,27 +52,28 @@ export const createBidderController = async (
         phone,
         address,
         website,
-        notes
+        notes,
       }
     );
 
     return res.status(201).json({
       success: true,
       message: "Bidder created successfully",
-      bidder
+      bidder,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Create Bidder Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to create bidder",
-      error: error.message
     });
   }
 };
 
+// ==========================================
+// GET BIDDER DIRECTORY
+// ==========================================
 
 export const getBidderList = async (
   req: AuthRequest,
@@ -74,115 +83,200 @@ export const getBidderList = async (
     const organizationId =
       req.params.organizationId as string;
 
-    const bidders = await getBidders(
-      organizationId
-    );
+    const bidders = await getBidders(organizationId);
 
     return res.status(200).json({
       success: true,
-      bidders
+      bidders,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Get Bidder List Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bidders",
-      error: error.message
     });
   }
 };
 
+// ==========================================
+// GET SINGLE BIDDER
+// ==========================================
 
 export const getBidder = async (
   req: AuthRequest,
   res: Response
 ) => {
   try {
+    const organizationId =
+      req.params.organizationId as string;
+
     const bidderId =
       req.params.bidderId as string;
 
     const bidder = await getBidderById(
+      organizationId,
       bidderId
     );
 
     if (!bidder) {
       return res.status(404).json({
         success: false,
-        message: "Bidder not found"
+        message: "Bidder not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      bidder
+      bidder,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Get Bidder Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bidder",
-      error: error.message
     });
   }
 };
 
+// ==========================================
+// UPDATE BIDDER
+// ==========================================
 
 export const updateBidderController = async (
   req: AuthRequest,
   res: Response
 ) => {
   try {
+    const organizationId =
+      req.params.organizationId as string;
+
     const bidderId =
       req.params.bidderId as string;
 
+    const {
+      companyName,
+      contactName,
+      email,
+      phone,
+      address,
+      website,
+      notes,
+      status,
+    } = req.body;
+
+    if (
+      companyName !== undefined &&
+      (
+        typeof companyName !== "string" ||
+        !companyName.trim()
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Company name cannot be empty",
+      });
+    }
+
+    if (
+      email !== undefined &&
+      (
+        typeof email !== "string" ||
+        !email.trim()
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Email cannot be empty",
+      });
+    }
+
+    if (
+      status !== undefined &&
+      status !== "ACTIVE" &&
+      status !== "INACTIVE"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bidder status",
+      });
+    }
+
     const bidder = await updateBidder(
+      organizationId,
       bidderId,
-      req.body
+      {
+        companyName,
+        contactName,
+        email,
+        phone,
+        address,
+        website,
+        notes,
+        status,
+      }
     );
+
+    if (!bidder) {
+      return res.status(404).json({
+        success: false,
+        message: "Bidder not found",
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: "Bidder updated successfully",
-      bidder
+      bidder,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Update Bidder Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to update bidder",
-      error: error.message
     });
   }
 };
 
+// ==========================================
+// DELETE BIDDER
+// ==========================================
 
 export const deleteBidderController = async (
   req: AuthRequest,
   res: Response
 ) => {
   try {
+    const organizationId =
+      req.params.organizationId as string;
+
     const bidderId =
       req.params.bidderId as string;
 
-    await deleteBidder(bidderId);
+    const result = await deleteBidder(
+      organizationId,
+      bidderId
+    );
+
+    if (result.count === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Bidder not found",
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Bidder deleted successfully"
+      message: "Bidder deleted successfully",
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Delete Bidder Error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to delete bidder"
+      message: "Failed to delete bidder",
     });
   }
 };

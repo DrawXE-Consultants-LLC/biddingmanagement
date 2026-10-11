@@ -7,9 +7,8 @@ import {
   getInvitationById,
   cancelInvitation,
   acceptInvitation,
-  declineInvitation
+  declineInvitation,
 } from "../services/invitation.service";
-
 
 // ==========================================
 // CREATE INVITATION
@@ -23,16 +22,27 @@ export const createInvitationController = async (
     const organizationId =
       req.params.organizationId as string;
 
-    const {
-      bidPackageId,
-      bidderId,
-      email
-    } = req.body;
+    const { bidPackageId, bidderId, email } = req.body;
 
-    if (!bidPackageId || !bidderId || !email) {
+    if (!organizationId) {
       return res.status(400).json({
         success: false,
-        message: "bidPackageId, bidderId and email are required"
+        message: "Organization ID is required",
+      });
+    }
+
+    if (
+      typeof bidPackageId !== "string" ||
+      typeof bidderId !== "string" ||
+      typeof email !== "string" ||
+      !bidPackageId.trim() ||
+      !bidderId.trim() ||
+      !email.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "bidPackageId, bidderId and email are required",
       });
     }
 
@@ -46,19 +56,20 @@ export const createInvitationController = async (
     return res.status(201).json({
       success: true,
       message: "Invitation created successfully",
-      invitation
+      invitation,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Create Invitation Error:", error);
 
     return res.status(400).json({
       success: false,
-      message: error.message
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to create invitation",
     });
   }
 };
-
 
 // ==========================================
 // GET ORGANIZATION INVITATIONS
@@ -72,27 +83,30 @@ export const getInvitationsController = async (
     const organizationId =
       req.params.organizationId as string;
 
-    const invitations =
-      await getOrganizationInvitations(
-        organizationId
-      );
+    if (!organizationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization ID is required",
+      });
+    }
+
+    const invitations = await getOrganizationInvitations(
+      organizationId
+    );
 
     return res.status(200).json({
       success: true,
-      invitations
+      invitations,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Get Organization Invitations Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to fetch invitations",
-      error: error.message
     });
   }
 };
-
 
 // ==========================================
 // GET SINGLE INVITATION
@@ -109,38 +123,42 @@ export const getInvitationController = async (
     const invitationId =
       req.params.invitationId as string;
 
-    const invitation =
-      await getInvitationById(
-        organizationId,
-        invitationId
-      );
+    if (!organizationId || !invitationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization ID and Invitation ID are required",
+      });
+    }
+
+    const invitation = await getInvitationById(
+      organizationId,
+      invitationId
+    );
 
     if (!invitation) {
       return res.status(404).json({
         success: false,
-        message: "Invitation not found"
+        message: "Invitation not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      invitation
+      invitation,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Get Invitation Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to fetch invitation",
-      error: error.message
     });
   }
 };
 
-
 // ==========================================
 // ACCEPT INVITATION
+// Only the invited user can accept
 // ==========================================
 
 export const acceptInvitationController = async (
@@ -148,37 +166,65 @@ export const acceptInvitationController = async (
   res: Response
 ) => {
   try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
     const organizationId =
       req.params.organizationId as string;
 
     const invitationId =
       req.params.invitationId as string;
 
-    const invitation =
-      await acceptInvitation(
-        organizationId,
-        invitationId
-      );
+    if (!organizationId || !invitationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization ID and Invitation ID are required",
+      });
+    }
+
+    // The service checks that the invitation email matches
+    // the authenticated user's email.
+    const invitation = await acceptInvitation(
+      organizationId,
+      invitationId,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: "Invitation accepted successfully",
-      invitation
+      invitation,
     });
+  } catch (error: unknown) {
+    console.error("Accept Invitation Error:", error);
 
-  } catch (error: any) {
-    console.error(error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to accept invitation";
 
-    return res.status(400).json({
+    const statusCode =
+      message ===
+      "Invitation not found or does not belong to the authenticated user"
+        ? 404
+        : 400;
+
+    return res.status(statusCode).json({
       success: false,
-      message: error.message
+      message,
     });
   }
 };
 
-
 // ==========================================
 // DECLINE INVITATION
+// Only the invited user can decline
 // ==========================================
 
 export const declineInvitationController = async (
@@ -186,37 +232,63 @@ export const declineInvitationController = async (
   res: Response
 ) => {
   try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
     const organizationId =
       req.params.organizationId as string;
 
     const invitationId =
       req.params.invitationId as string;
 
-    const invitation =
-      await declineInvitation(
-        organizationId,
-        invitationId
-      );
+    if (!organizationId || !invitationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization ID and Invitation ID are required",
+      });
+    }
+
+    const invitation = await declineInvitation(
+      organizationId,
+      invitationId,
+      userId
+    );
 
     return res.status(200).json({
       success: true,
       message: "Invitation declined successfully",
-      invitation
+      invitation,
     });
+  } catch (error: unknown) {
+    console.error("Decline Invitation Error:", error);
 
-  } catch (error: any) {
-    console.error(error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to decline invitation";
 
-    return res.status(400).json({
+    const statusCode =
+      message ===
+      "Invitation not found or does not belong to the authenticated user"
+        ? 404
+        : 400;
+
+    return res.status(statusCode).json({
       success: false,
-      message: error.message
+      message,
     });
   }
 };
 
-
 // ==========================================
 // CANCEL INVITATION
+// Owner / Admin authorization enforced by routes
 // ==========================================
 
 export const cancelInvitationController = async (
@@ -230,24 +302,32 @@ export const cancelInvitationController = async (
     const invitationId =
       req.params.invitationId as string;
 
-    const invitation =
-      await cancelInvitation(
-        organizationId,
-        invitationId
-      );
+    if (!organizationId || !invitationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Organization ID and Invitation ID are required",
+      });
+    }
+
+    const invitation = await cancelInvitation(
+      organizationId,
+      invitationId
+    );
 
     return res.status(200).json({
       success: true,
       message: "Invitation cancelled successfully",
-      invitation
+      invitation,
     });
-
-  } catch (error: any) {
-    console.error(error);
+  } catch (error: unknown) {
+    console.error("Cancel Invitation Error:", error);
 
     return res.status(400).json({
       success: false,
-      message: error.message
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to cancel invitation",
     });
   }
 };

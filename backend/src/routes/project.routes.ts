@@ -5,26 +5,23 @@ import {
   getProjects,
   getProject,
   updateProjectController,
-  deleteProjectController
+  deleteProjectController,
 } from "../controllers/project.controller";
 
-import { authenticate }
-  from "../middleware/auth.middleware";
+import { authenticate } from "../middleware/auth.middleware";
 
 import {
-  requireOrganizationMember
+  requireOrganizationMember,
 } from "../middleware/organization.middleware";
 
 import {
-  authorize
-} from "../middleware/rbac.middleware";
+  resolveProjectOrganization,
+} from "../middleware/projectOrganization.middleware";
 
-import {
-  UserRole
-} from "../types/auth.types";
+import { authorize } from "../middleware/rbac.middleware";
+import { UserRole } from "../types/auth.types";
 
 const router = Router();
-
 
 // ==========================================
 // CREATE PROJECT
@@ -33,80 +30,74 @@ const router = Router();
 
 router.post(
   "/organizations/:organizationId/projects",
-
   authenticate,
-
   requireOrganizationMember,
-
   authorize(
     UserRole.OWNER,
     UserRole.ADMIN,
     UserRole.PROJECT_MANAGER
   ),
-
   createProjectController
 );
 
-
 // ==========================================
-// GET PROJECTS
+// GET ORGANIZATION PROJECTS
 // AUTHENTICATED ORGANIZATION MEMBER
 // ==========================================
 
 router.get(
   "/organizations/:organizationId/projects",
-
   authenticate,
-
   requireOrganizationMember,
-
   getProjects
 );
 
-
 // ==========================================
 // GET SINGLE PROJECT
+// ANY AUTHORIZED ORGANIZATION MEMBER
 // ==========================================
 
 router.get(
   "/projects/:projectId",
-
   authenticate,
-
+  resolveProjectOrganization,
+  requireOrganizationMember,
   getProject
 );
 
-
 // ==========================================
 // UPDATE PROJECT
+// OWNER / ADMIN / PROJECT MANAGER
 // ==========================================
 
 router.patch(
   "/projects/:projectId",
-
   authenticate,
-
+  resolveProjectOrganization,
+  requireOrganizationMember,
+  authorize(
+    UserRole.OWNER,
+    UserRole.ADMIN,
+    UserRole.PROJECT_MANAGER
+  ),
   updateProjectController
 );
 
-
 // ==========================================
 // DELETE PROJECT
-// OWNER / ADMIN
+// OWNER / ADMIN ONLY
 // ==========================================
 
 router.delete(
   "/projects/:projectId",
-
   authenticate,
-
+  resolveProjectOrganization,
+  requireOrganizationMember,
   authorize(
     UserRole.OWNER,
     UserRole.ADMIN
   ),
-
   deleteProjectController
 );
-
 
 export default router;

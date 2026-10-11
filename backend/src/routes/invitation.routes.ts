@@ -6,7 +6,7 @@ import {
   getInvitationController,
   cancelInvitationController,
   acceptInvitationController,
-  declineInvitationController
+  declineInvitationController,
 } from "../controllers/invitation.controller";
 
 import { authenticate } from "../middleware/auth.middleware";
@@ -15,9 +15,20 @@ import { UserRole } from "../types/auth.types";
 
 const router = Router();
 
-// =====================================================
+// Roles permitted to view organization invitations.
+// authorize() also verifies organization membership.
+const invitationReadRoles = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.ESTIMATOR,
+  UserRole.PROJECT_MANAGER,
+  UserRole.VIEWER,
+];
+
+// ==========================================
 // CREATE INVITATION
-// =====================================================
+// OWNER / ADMIN / ESTIMATOR / PROJECT MANAGER
+// ==========================================
 
 router.post(
   "/organizations/:organizationId/invitations",
@@ -31,29 +42,34 @@ router.post(
   createInvitationController
 );
 
-// =====================================================
-// GET ALL INVITATIONS
-// =====================================================
+// ==========================================
+// GET ORGANIZATION INVITATIONS
+// AUTHORIZED ORGANIZATION MEMBERS ONLY
+// ==========================================
 
 router.get(
   "/organizations/:organizationId/invitations",
   authenticate,
+  authorize(...invitationReadRoles),
   getInvitationsController
 );
 
-// =====================================================
+// ==========================================
 // GET SINGLE INVITATION
-// =====================================================
+// AUTHORIZED ORGANIZATION MEMBERS ONLY
+// ==========================================
 
 router.get(
   "/organizations/:organizationId/invitations/:invitationId",
   authenticate,
+  authorize(...invitationReadRoles),
   getInvitationController
 );
 
-// =====================================================
+// ==========================================
 // ACCEPT INVITATION
-// =====================================================
+// ONLY THE INVITED USER
+// ==========================================
 
 router.patch(
   "/organizations/:organizationId/invitations/:invitationId/accept",
@@ -61,9 +77,10 @@ router.patch(
   acceptInvitationController
 );
 
-// =====================================================
+// ==========================================
 // DECLINE INVITATION
-// =====================================================
+// ONLY THE INVITED USER
+// ==========================================
 
 router.patch(
   "/organizations/:organizationId/invitations/:invitationId/decline",
@@ -71,9 +88,10 @@ router.patch(
   declineInvitationController
 );
 
-// =====================================================
+// ==========================================
 // CANCEL INVITATION
-// =====================================================
+// OWNER / ADMIN ONLY
+// ==========================================
 
 router.patch(
   "/organizations/:organizationId/invitations/:invitationId/cancel",

@@ -1,51 +1,151 @@
 import { prisma } from "../config/database";
 
+type OrganizationRole =
+  | "OWNER"
+  | "ADMIN"
+  | "ESTIMATOR"
+  | "PROJECT_MANAGER"
+  | "VIEWER";
+
+const organizationRoles: OrganizationRole[] = [
+  "OWNER",
+  "ADMIN",
+  "ESTIMATOR",
+  "PROJECT_MANAGER",
+  "VIEWER",
+];
+
+const isOrganizationRole = (
+  role: string
+): role is OrganizationRole => {
+  return organizationRoles.includes(role as OrganizationRole);
+};
+
+const getActorMembership = async (
+  client: typeof prisma,
+  organizationId: string,
+  actorUserId: string
+) => {
+  return client.membership.findUnique({
+    where: {
+      userId_organizationId: {
+        userId: actorUserId,
+        organizationId,
+      },
+    },
+    select: {
+      id: true,
+      role: true,
+    },
+  });
+};
 
 // ==========================================
 // GET ORGANIZATION MEMBERS
 // ==========================================
+
 export const getOrganizationMembers = async (
   organizationId: string
 ) => {
-
-  const members = await prisma.membership.findMany({
+  return prisma.membership.findMany({
     where: {
-      organizationId
+      organizationId,
     },
-
     include: {
       user: {
         select: {
           id: true,
           firstName: true,
           lastName: true,
-          email: true
-        }
-      }
-    }
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      id: "asc",
+    },
   });
-
-  return members;
 };
 
+// ==========================================
+// ADD MEMBER TO ORGANIZATION
+// ==========================================
 
-// ==========================================
-// ADD EXISTING USER TO ORGANIZATION
-// ==========================================
 export const addMember = async (
   organizationId: string,
   userId: string,
-  role: string
+  role: string,
+  actorUserId: string
 ) => {
+  if (!isOrganizationRole(role)) {
+    throw new Error("Invalid organization role");
+  }
+
+  const actorMembership = await getActorMembership(
+    prisma,
+    organizationId,
+    actorUserId
+  );
+
+  if (
+    !actorMembership ||
+    !["OWNER", "ADMIN"].includes(actorMembership.role)
+  ) {
+    throw new Error(
+      "Not authorized to add members to this organization"
+    );
+  }
+
+  // Only an OWNER may assign OWNER or ADMIN roles.
+  if (
+    ["OWNER", "ADMIN"].includes(role) &&
+    actorMembership.role !== "OWNER"
+  ) {
+    throw new Error(
+      "Only the organization owner can assign OWNER or ADMIN roles"
+    );
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: {
+      id: organizationId,
+    },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!organization) {
+    throw new Error("Organization not found");
+  }
+
+  if (organization.status !== "ACTIVE") {
+    throw new Error("Organization is not active");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    throw new Error("User not found or inactive");
+  }
 
   const existingMembership =
     await prisma.membership.findUnique({
       where: {
         userId_organizationId: {
           userId,
-          organizationId
-        }
-      }
+          organizationId,
+        },
+      },
     });
 
   if (existingMembership) {
@@ -54,65 +154,164 @@ export const addMember = async (
     );
   }
 
-  const membership =
-    await prisma.membership.create({
-      data: {
-        userId,
-        organizationId,
-        role
+  return prisma.membership.create({
+    data: {
+      userId,
+      organizationId,
+      role,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
       },
-
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true
-          }
-        }
-      }
-    });
-
-  return membership;
+    },
+  });
 };
-
 
 // ==========================================
 // CHANGE MEMBER ROLE
+// OWNER ONLY
 // ==========================================
+
 export const updateMemberRole = async (
+  organizationId: string,
   membershipId: string,
-  role: string
+  role: string,
+  actorUserId: string
 ) => {
+  if (!isOrganizationRole(role)) {
+    throw new Error("Invalid organization role");
+  }
 
-  const membership =
-    await prisma.membership.update({
+  return prisma.$transaction(async (tx) => {
+    const actorMembership = await tx.membership.findUnique({
       where: {
-        id: membershipId
+        userId_organizationId: {
+          userId: actorUserId,
+          organizationId,
+        },
       },
-
-      data: {
-        role
-      }
     });
 
-  return membership;
-};
+    if (!actorMembership || actorMembership.role !== "OWNER") {
+      throw new Error(
+        "Only the organization owner can change member roles"
+      );
+    }
 
+    const targetMembership = await tx.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+      },
+    });
+
+    if (!targetMembership) {
+      throw new Error("Membership not found");
+    }
+
+    // Prevent demoting the last remaining OWNER.
+    if (
+      targetMembership.role === "OWNER" &&
+      role !== "OWNER"
+    ) {
+      const ownerCount = await tx.membership.count({
+        where: {
+          organizationId,
+          role: "OWNER",
+        },
+      });
+
+      if (ownerCount <= 1) {
+        throw new Error(
+          "Cannot remove the last owner from an organization"
+        );
+      }
+    }
+
+    return tx.membership.update({
+      where: {
+        id: targetMembership.id,
+      },
+      data: {
+        role,
+      },
+    });
+  });
+};
 
 // ==========================================
 // REMOVE MEMBER
+// OWNER / ADMIN
 // ==========================================
+
 export const removeMember = async (
-  membershipId: string
+  organizationId: string,
+  membershipId: string,
+  actorUserId: string
 ) => {
+  return prisma.$transaction(async (tx) => {
+    const actorMembership = await tx.membership.findUnique({
+      where: {
+        userId_organizationId: {
+          userId: actorUserId,
+          organizationId,
+        },
+      },
+    });
 
-  await prisma.membership.delete({
-    where: {
-      id: membershipId
+    if (
+      !actorMembership ||
+      !["OWNER", "ADMIN"].includes(actorMembership.role)
+    ) {
+      throw new Error(
+        "Not authorized to remove members from this organization"
+      );
     }
-  });
 
-  return true;
+    const targetMembership = await tx.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId,
+      },
+    });
+
+    if (!targetMembership) {
+      throw new Error("Membership not found");
+    }
+
+    if (targetMembership.role === "OWNER") {
+      if (actorMembership.role !== "OWNER") {
+        throw new Error(
+          "Only the organization owner can remove an owner"
+        );
+      }
+
+      const ownerCount = await tx.membership.count({
+        where: {
+          organizationId,
+          role: "OWNER",
+        },
+      });
+
+      if (ownerCount <= 1) {
+        throw new Error(
+          "Cannot remove the last owner from an organization"
+        );
+      }
+    }
+
+    await tx.membership.delete({
+      where: {
+        id: targetMembership.id,
+      },
+    });
+
+    return true;
+  });
 };
