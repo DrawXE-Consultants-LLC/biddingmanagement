@@ -19,7 +19,11 @@ model User {
   lastName     String
   isActive     Boolean @default(true)
 
-  memberships Membership[]
+  platformRole PlatformRole @default(USER)
+
+  memberships   Membership[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -34,12 +38,18 @@ model Organization {
   name   String
   status String @default("ACTIVE")
 
-  memberships Membership[]
-  projects    Project[]
-  bidders     Bidder[]
-  invitations Invitation[]
-  documents   Document[]
-  bids        Bid[]
+  memberships    Membership[]
+  projects       Project[]
+  bidders        Bidder[]
+  invitations    Invitation[]
+  documents      Document[]
+  bids           Bid[]
+  bidLineItems   BidLineItem[]
+  clarifications Clarification[]
+  addenda        Addendum[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  subscription   OrganizationSubscription?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,6 +93,7 @@ model Project {
   organization Organization @relation(fields: [organizationId], references: [id])
   bidPackages  BidPackage[]
   documents    Document[]
+  addenda      Addendum[]
 
   @@index([organizationId])
   @@index([status])
@@ -103,9 +114,11 @@ model BidPackage {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  project     Project      @relation(fields: [projectId], references: [id])
-  invitations Invitation[]
-  bids        Bid[]
+  project        Project         @relation(fields: [projectId], references: [id])
+  invitations    Invitation[]
+  bids           Bid[]
+  clarifications Clarification[]
+  addenda        Addendum[]
 
   @@index([projectId])
   @@index([status])
@@ -130,9 +143,10 @@ model Bidder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  invitations  Invitation[]
-  bids         Bid[]
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  invitations    Invitation[]
+  bids           Bid[]
+  clarifications Clarification[]
 
   @@index([organizationId])
   @@index([email])
@@ -225,9 +239,220 @@ model Bid {
   bidPackage   BidPackage   @relation(fields: [bidPackageId], references: [id])
   bidder       Bidder       @relation(fields: [bidderId], references: [id])
 
+  lineItems      BidLineItem[]
+  clarifications Clarification[]
+
   @@index([organizationId])
   @@index([bidPackageId])
   @@index([bidderId])
+  @@index([status])
+}
+
+// ==========================================
+// BID LINE ITEM
+// ==========================================
+
+model BidLineItem {
+  id    String @id @default(uuid())
+  bidId String
+
+  name        String
+  description String?
+
+  quantity   Decimal?
+  unit       String?
+  unitPrice  Decimal?
+  totalPrice Decimal?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bid            Bid           @relation(fields: [bidId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@index([bidId])
+}
+
+// ==========================================
+// CLARIFICATION / Q&A
+// ==========================================
+
+model Clarification {
+  id String @id @default(uuid())
+
+  organizationId String
+  bidPackageId   String
+  bidId          String?
+  bidderId       String
+
+  question String
+  answer   String?
+
+  status ClarificationStatus @default(OPEN)
+
+  answeredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  bidPackage   BidPackage   @relation(fields: [bidPackageId], references: [id])
+  bid          Bid?         @relation(fields: [bidId], references: [id])
+  bidder       Bidder       @relation(fields: [bidderId], references: [id])
+
+  @@index([organizationId])
+  @@index([bidPackageId])
+  @@index([bidId])
+  @@index([bidderId])
+  @@index([status])
+}
+
+// ==========================================
+// ADDENDUM
+// ==========================================
+
+model Addendum {
+  id String @id @default(uuid())
+
+  organizationId String
+  projectId      String
+  bidPackageId   String?
+
+  number      Int
+  title       String
+  description String?
+
+  status AddendumStatus @default(DRAFT)
+
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  project      Project      @relation(fields: [projectId], references: [id])
+  bidPackage   BidPackage?  @relation(fields: [bidPackageId], references: [id])
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([bidPackageId])
+  @@index([status])
+}
+
+// ==========================================
+// NOTIFICATION
+// ==========================================
+
+model Notification {
+  id String @id @default(uuid())
+
+  userId         String
+  organizationId String?
+
+  type    NotificationType
+  title   String
+  message String
+
+  entityType String?
+  entityId   String?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([type])
+  @@index([isRead])
+  @@index([entityType, entityId])
+}
+
+// ==========================================
+// AUDIT LOG
+// ==========================================
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  userId         String?
+  organizationId String?
+
+  action     AuditAction
+  entityType String
+  entityId   String?
+
+  description String?
+  metadata    Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+// ==========================================
+// SUBSCRIPTION PLAN
+// ==========================================
+
+model SubscriptionPlan {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+
+  monthlyPrice Decimal @default(0)
+
+  maxUsers        Int?
+  maxProjects     Int?
+  maxBidsPerMonth Int?
+
+  isActive Boolean @default(true)
+
+  subscriptions OrganizationSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+// ==========================================
+// ORGANIZATION SUBSCRIPTION
+// ==========================================
+
+model OrganizationSubscription {
+  id             String @id @default(uuid())
+  organizationId String @unique
+  planId         String
+
+  status SubscriptionStatus @default(ACTIVE)
+
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  cancelledAt DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  plan         SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
   @@index([status])
 }
 
@@ -279,4 +504,68 @@ enum BidStatus {
   AWARDED
   REJECTED
   WITHDRAWN
+}
+
+enum ClarificationStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+enum AddendumStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum NotificationType {
+  BID_INVITATION
+  BID_SUBMITTED
+  CLARIFICATION_CREATED
+  CLARIFICATION_ANSWERED
+  ADDENDUM_PUBLISHED
+  BID_AWARDED
+  PROJECT_UPDATE
+  SYSTEM
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+
+  CREATE
+  UPDATE
+  DELETE
+
+  INVITE
+  ACCEPT
+  DECLINE
+
+  SUBMIT
+  WITHDRAW
+
+  ANSWER
+  CLOSE
+
+  PUBLISH
+  CANCEL
+
+  AWARD
+  REJECT
+
+  READ
+  SYSTEM
+}
+
+enum PlatformRole {
+  USER
+  PLATFORM_ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELLED
+  EXPIRED
 }
